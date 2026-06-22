@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TalentAI — Internal Talent Marketplace</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } }
+    };
+  </script>
+  <style>
+    * { font-family: 'Inter', system-ui, sans-serif; }
+    .score-ring circle { transition: stroke-dashoffset 0.9s cubic-bezier(0.4,0,0.2,1); }
+    .slide-in { animation: slideIn 0.2s ease-out; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .card-hover { transition: all 0.15s ease; }
+    .card-hover:hover { transform: translateY(-1px); box-shadow: 0 4px 24px rgba(99,102,241,0.08); }
+    ::-webkit-scrollbar { width:5px; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:99px; }
+    .pulse-dot { animation: pulseDot 2s infinite; }
+    @keyframes pulseDot { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+    .modal-overlay { animation: fadeIn 0.15s ease; }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+<div id="root"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const state = {
+  role: null,        // 'employee' | 'manager' | 'leader'
+  page: 'login',    // 'login' | 'employee' | 'manager' | 'analytics'
+  expandedOpp: 'P001',
+  selectedReq: 'P001',
+  expandedCandidate: 'E001',
+  showModal: false,
+  modalCandidate: null,
+  modalConfirmed: false,
+  appliedJobs: new Set(['P002']),
+  shortlisted: new Set(),
+  sortBy: 'match',
+  filterAvail: 'all',
+};
+
+// ═══════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════
+const DATA = {
+  employee: {
+    id:'E001', name:'Tanmay Sharma', initials:'TS', designation:'Senior Data Engineer',
+    grade:'L5', department:'Data & Analytics', yearsOfExp:6, benchDuration:25,
+    availability:'Immediate', location:'Pune, India', attritionRisk:'medium',
+    skills:[
+      {name:'SQL',prof:'Expert',yoe:6,pct:100}, {name:'ETL',prof:'Advanced',yoe:5,pct:75},
+      {name:'Azure',prof:'Advanced',yoe:4,pct:75}, {name:'Python',prof:'Intermediate',yoe:3,pct:50},
+      {name:'Power BI',prof:'Intermediate',yoe:2,pct:50}, {name:'Azure Data Factory',prof:'Advanced',yoe:3,pct:75},
+    ],
+    certs:['AZ-900','DP-900'],
+    projects:[
+      {name:'Financial Data Warehouse',client:'HDFC Bank',role:'Lead Data Engineer',tech:['SQL','SSIS','Azure Data Factory'],duration:'18 months'},
+      {name:'Retail Analytics Platform',client:'BigMart',role:'Data Engineer',tech:['Python','ETL','Power BI','Azure'],duration:'12 months'},
+      {name:'Claims Processing Pipeline',client:'LIC',role:'Data Engineer',tech:['SQL','ETL','SSIS','Oracle'],duration:'8 months'},
+    ],
+    color:'bg-indigo-600',
+  },
+  opportunities: [
+    {id:'P001',title:'Senior Data Engineer',project:'FinEdge Analytics Platform',client:'Axis Bank',industry:'BFSI',
+     score:92,matched:['SQL','ETL','Azure'],missing:['Databricks'],certs:['AZ-900'],missingCerts:[],
+     selProb:78,urgency:'critical',mode:'Hybrid',location:'Mumbai / Pune',start:'Jul 15, 2024',duration:'12 months',
+     postedBy:'Rajesh Kumar',headcount:2,applied:false,
+     insight:'Strong fit based on your 6-year ETL expertise and BFSI domain experience at HDFC Bank. Azure Data Factory skills closely map to the pipeline requirements. Only Databricks stands between you and a 100% match.',
+     upskill:[{skill:'Databricks',course:'Databricks Lakehouse Fundamentals',platform:'Databricks Academy',time:'2 weeks',impact:'+8% → 100%',priority:'high'},
+              {skill:'PySpark',course:'Apache Spark with Python',platform:'Coursera',time:'3 weeks',impact:'+4% (nice-to-have)',priority:'medium'}]},
+    {id:'P004',title:'ETL Developer',project:'Claims Data Hub',client:'Bajaj Allianz',industry:'Insurance',
+     score:88,matched:['SQL','ETL','Python','SSIS'],missing:[],certs:[],missingCerts:[],
+     selProb:82,urgency:'medium',mode:'Hybrid',location:'Pune',start:'Jul 1, 2024',duration:'12 months',
+     postedBy:'Vikas Tiwari',headcount:2,applied:false,
+     insight:'Excellent skill alignment — you meet all required skills including SSIS which few candidates possess. Your previous insurance project at LIC is a strong differentiator.',
+     upskill:[{skill:'Talend',course:'Talend Data Integration',platform:'Talend Academy',time:'1 week',impact:'+3% (nice-to-have)',priority:'low'}]},
+    {id:'P002',title:'Senior Data Analyst',project:'Retail Intelligence Suite',client:'D-Mart',industry:'Retail',
+     score:78,matched:['SQL','Power BI','Azure'],missing:['Excel (Advanced)'],certs:[],missingCerts:[],
+     selProb:65,urgency:'high',mode:'Onsite',location:'Mumbai',start:'Jul 10, 2024',duration:'9 months',
+     postedBy:'Priyanka Mehta',headcount:1,applied:true,
+     insight:'Good match for your SQL and Power BI skills. Your retail domain experience at BigMart is highly relevant to D-Mart. The role is slightly below your seniority level.',
+     upskill:[{skill:'Advanced Excel / DAX',course:'Excel & Power Query Mastery',platform:'LinkedIn Learning',time:'1 week',impact:'+5% match score',priority:'medium'}]},
+    {id:'P003',title:'Azure Cloud Data Engineer',project:'HealthData Lakehouse',client:'Apollo Hospitals',industry:'Healthcare',
+     score:64,matched:['Azure','Python'],missing:['Databricks','PySpark'],certs:['AZ-900'],missingCerts:['DP-203'],
+     selProb:42,urgency:'high',mode:'Hybrid',location:'Bengaluru',start:'Aug 1, 2024',duration:'18 months',
+     postedBy:'Sneha Iyer',headcount:3,applied:false,
+     insight:'Moderate fit — Azure skills are strong but Databricks and PySpark are core requirements you currently lack. Recommend upskilling before applying.',
+     upskill:[{skill:'Databricks',course:'Databricks Certified Associate Developer',platform:'Databricks Academy',time:'3 weeks',impact:'+18% → 82%',priority:'high'},
+              {skill:'DP-203 Certification',course:'Azure Data Engineer Associate',platform:'Microsoft Learn',time:'4 weeks',impact:'+10% cert bonus',priority:'high'}]},
+    {id:'P005',title:'Data Platform Engineer',project:'Wealth Management Platform',client:'Kotak Mahindra',industry:'BFSI',
+     score:52,matched:['Azure','Python'],missing:['Databricks','Snowflake'],certs:['AZ-900'],missingCerts:['AZ-104'],
+     selProb:28,urgency:'high',mode:'Hybrid',location:'Mumbai',start:'Aug 15, 2024',duration:'24 months',
+     postedBy:'Ankit Sharma',headcount:1,applied:false,
+     insight:'Low match currently due to missing Snowflake and Databricks. Your Azure fundamentals provide a solid foundation. Recommend a structured 6-week upskilling plan.',
+     upskill:[{skill:'Snowflake',course:'SnowPro Core Certification',platform:'Snowflake University',time:'4 weeks',impact:'+22% match score',priority:'high'},
+              {skill:'Databricks',course:'Databricks Lakehouse Platform',platform:'Databricks Academy',time:'2 weeks',impact:'+12% match score',priority:'high'}]},
+  ],
+  candidates: [
+    {id:'E001',name:'Tanmay Sharma',initials:'TS',color:'bg-indigo-600',designation:'Senior Data Engineer',grade:'L5',yoe:6,bench:25,avail:'Immediate',
+     score:92,matched:['SQL','ETL','Azure'],missing:['Databricks'],certs:['AZ-900','DP-900'],selProb:78,benchRisk:'medium',attrRisk:false,
+     reasons:['Similar project experience in BFSI data engineering at HDFC Bank','Azure Fundamentals certified (AZ-900 required)','Expert-level SQL with 6 years hands-on ETL','Azure Data Factory aligns with pipeline requirements','25 days on bench — immediate availability'],
+     insight:'Tanmay is the strongest match. His HDFC Bank engagement involved the same scale of financial data pipelines. Databricks can be onboarded in 2 weeks — recommend scheduling interview immediately given 25-day bench duration.',
+     projects:[{name:'Financial Data Warehouse',client:'HDFC Bank',duration:'18 months'},{name:'Retail Analytics Platform',client:'BigMart',duration:'12 months'}],
+    },
+    {id:'E002',name:'Divya Nair',initials:'DN',color:'bg-pink-600',designation:'Cloud Data Engineer',grade:'L4',yoe:4,bench:18,avail:'Immediate',
+     score:79,matched:['Azure','Python','SQL'],missing:['ETL'],certs:['AZ-900','AZ-104'],selProb:61,benchRisk:'low',attrRisk:false,
+     reasons:['Strong Azure ecosystem knowledge with AZ-104 (Admin certified)','Databricks exposure — beginner level but shows initiative','Infrastructure-as-code skills add DevOps value'],
+     insight:'Divya has solid Azure depth but lacks ETL-specific experience. Good secondary candidate if Tanmay is unavailable. AZ-104 is stronger than required.',
+     projects:[{name:'Cloud Migration',client:'Airtel',duration:'14 months'}],
+    },
+    {id:'E003',name:'Aisha Khan',initials:'AK',color:'bg-emerald-600',designation:'Data Scientist',grade:'L5',yoe:5,bench:38,avail:'Immediate',
+     score:61,matched:['SQL','Azure ML','Python'],missing:['ETL','Databricks'],certs:['AZ-900','DP-100'],selProb:38,benchRisk:'high',attrRisk:true,
+     reasons:['Strong Python and Azure skills','DP-100 certification shows Azure data competency','High bench duration (38 days) — pressure to place'],
+     insight:"Aisha is primarily a Data Scientist — the role requires Data Engineering skills she hasn't used professionally. Consider only if role evolves to include ML. High attrition risk due to extended bench.",
+     projects:[{name:'Credit Risk Modelling',client:'ICICI Bank',duration:'16 months'}],
+    },
+    {id:'E006',name:'Meera Joshi',initials:'MJ',color:'bg-violet-600',designation:'ML Engineer',grade:'L5',yoe:5,bench:31,avail:'Immediate',
+     score:48,matched:['Python','Databricks'],missing:['SQL','ETL','Azure'],certs:['DP-100'],selProb:22,benchRisk:'medium',attrRisk:false,
+     reasons:["Databricks experience — one of few candidates with this skill","Python expertise transferable to PySpark tasks"],
+     insight:"Meera's ML background is misaligned with this data engineering role. Her Databricks experience is relevant but insufficient alone. Not recommended unless no other options exist.",
+     projects:[{name:'Recommendation Engine',client:'Flipkart',duration:'15 months'}],
+    },
+  ],
+  requisitions:[
+    {id:'P001',title:'Senior Data Engineer',client:'Axis Bank',urgency:'critical',candidates:4,start:'Jul 15',status:'active'},
+    {id:'P002',title:'Senior Data Analyst',client:'D-Mart',urgency:'high',candidates:2,start:'Jul 10',status:'active'},
+    {id:'P003',title:'Azure Cloud Data Engineer',client:'Apollo Hospitals',urgency:'high',candidates:6,start:'Aug 1',status:'shortlisting'},
+    {id:'P004',title:'ETL Developer',client:'Bajaj Allianz',urgency:'medium',candidates:3,start:'Jul 1',status:'posted'},
+    {id:'P005',title:'Data Platform Engineer',client:'Kotak Mahindra',urgency:'high',candidates:1,start:'Aug 15',status:'posted'},
+  ],
+  analytics:{
+    kpis:[
+      {label:'Total on Bench',value:48,change:'+3 this week',good:false,icon:'👥',color:'rose'},
+      {label:'Avg Bench Duration',value:'23 days',change:'−2 days vs last month',good:true,icon:'⏱',color:'amber'},
+      {label:'Open Positions',value:34,change:'+8 this week',good:true,icon:'💼',color:'indigo'},
+      {label:'Placement Rate (30d)',value:'74%',change:'+6% vs last month',good:true,icon:'📈',color:'emerald'},
+    ],
+    benchTrend:[
+      {m:'Jan',bench:62,placed:51},{m:'Feb',bench:58,placed:49},{m:'Mar',bench:55,placed:46},
+      {m:'Apr',bench:51,placed:43},{m:'May',bench:47,placed:39},{m:'Jun',bench:48,placed:36},
+    ],
+    skillGap:[
+      {skill:'Snowflake',demand:200,supply:12},{skill:'Databricks',demand:165,supply:22},
+      {skill:'Gen AI',demand:140,supply:8},{skill:'Kubernetes',demand:120,supply:48},
+      {skill:'Azure Synapse',demand:95,supply:31},{skill:'dbt',demand:75,supply:14},
+    ],
+    domain:[
+      {name:'Data & Analytics',val:18,color:'#6366f1'},{name:'Cloud',val:12,color:'#22c55e'},
+      {name:'Application Dev',val:10,color:'#f59e0b'},{name:'AI / ML',val:5,color:'#ec4899'},
+      {name:'ERP / SAP',val:3,color:'#14b8a6'},
+    ],
+    attrition:[
+      {name:'Arjun Singh',role:'Java Backend Developer',risk:82,bench:46,signals:'46d bench · LinkedIn activity spike'},
+      {name:'Aisha Khan',role:'Data Scientist',risk:74,bench:38,signals:'38d bench · Competing offers in market'},
+      {name:'Meera Joshi',role:'ML Engineer',risk:61,bench:31,signals:'31d bench · 3 interview declines'},
+      {name:'Rahul Gupta',role:'SAP Consultant',risk:58,bench:29,signals:'29d bench · Niche skills, low demand'},
+      {name:'Neha Singh',role:'Business Analyst',risk:45,bench:20,signals:'20d bench · Upskilling in progress'},
+    ],
+    forecast:[
+      {skill:'Snowflake',cat:'Data Platform',demand:200,supply:12,gap:188,trend:'growing',urgency:'high'},
+      {skill:'Databricks',cat:'Data Platform',demand:165,supply:22,gap:143,trend:'growing',urgency:'high'},
+      {skill:'Generative AI',cat:'AI/ML',demand:140,supply:8,gap:132,trend:'growing',urgency:'high'},
+      {skill:'Kubernetes',cat:'DevOps',demand:120,supply:48,gap:72,trend:'growing',urgency:'medium'},
+      {skill:'Azure Synapse',cat:'Cloud',demand:95,supply:31,gap:64,trend:'growing',urgency:'medium'},
+      {skill:'dbt',cat:'Data Eng',demand:75,supply:14,gap:61,trend:'growing',urgency:'medium'},
+      {skill:'COBOL',cat:'Legacy',demand:10,supply:35,gap:-25,trend:'declining',urgency:'low'},
+    ],
+    insights:[
+      {title:'Critical Skill Gap: Snowflake Engineers',desc:'Demand forecast predicts 200 Snowflake engineers needed in 6 months. Current supply: 12. Recommend launching a 4-week bootcamp for 80+ Azure SQL engineers who are prime reskilling candidates.',type:'gap',urgency:'critical',action:'Launch Reskilling Program'},
+      {title:'High Attrition Risk: 5 Employees',desc:'ML model predicts 5 employees with >60% attrition probability within 30 days, primarily due to extended bench duration. Immediate engagement recommended: career conversations + accelerated placement.',type:'attrition',urgency:'high',action:'Schedule 1:1s Now'},
+      {title:'Deal Win Predicted: 3 Upcoming Projects',desc:'AI pipeline analysis shows 78% probability of winning 3 bids (FinTech, Healthcare, Retail) in Q3 requiring 45 Data Engineers. Start pre-allocation planning 8 weeks ahead of award.',type:'forecast',urgency:'medium',action:'Begin Pre-staffing'},
+      {title:'Obsolescence Alert: COBOL / Legacy Skills',desc:'22 employees carry COBOL/Mainframe as primary skill. Market demand dropping 15% YoY. Recommend proactive reskilling toward Java, Python, or Cloud.',type:'obsolescence',urgency:'medium',action:'Plan Upskilling Path'},
+    ],
+  },
+};
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+const urgCls = {critical:'bg-rose-100 text-rose-700 border-rose-200',high:'bg-amber-100 text-amber-700 border-amber-200',medium:'bg-blue-100 text-blue-700 border-blue-200',low:'bg-slate-100 text-slate-600 border-slate-200'};
+const urgLabel = {critical:'Critical',high:'High',medium:'Medium',low:'Low'};
+const scoreColor = s => s>=85?'text-emerald-600':s>=70?'text-amber-600':'text-rose-600';
+const scoreBg = s => s>=85?'bg-emerald-50 border-emerald-200':s>=70?'bg-amber-50 border-amber-200':'bg-rose-50 border-rose-200';
+const scoreStroke = s => s>=85?'#22c55e':s>=70?'#f59e0b':'#ef4444';
+const riskCls = {low:'text-emerald-600 bg-emerald-50',medium:'text-amber-600 bg-amber-50',high:'text-rose-600 bg-rose-50'};
+
+function scoreRing(score, size=88) {
+  const r=32, c=2*Math.PI*r, off=c-(score/100)*c;
+  return `<div class="relative flex items-center justify-center" style="width:${size}px;height:${size}px">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="-rotate-90" style="position:absolute;top:0;left:0">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="#e2e8f0" stroke-width="7"/>
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${scoreStroke(score)}" stroke-width="7"
+        stroke-dasharray="${c}" stroke-dashoffset="${off}" stroke-linecap="round"/>
+    </svg>
+    <div class="flex flex-col items-center justify-center z-10">
+      <span class="font-bold text-slate-900" style="font-size:${size>80?'1.1rem':'0.85rem'}">${score}%</span>
+      <span class="text-slate-400" style="font-size:0.6rem;margin-top:-2px">match</span>
+    </div>
+  </div>`;
+}
+
+function skillChip(skill, matched=true) {
+  if(matched) return `<span class="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">✓ ${skill}</span>`;
+  return `<span class="inline-flex items-center gap-1 text-xs bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full font-medium">✕ ${skill}</span>`;
+}
+
+function svgBar(data, width=360, height=160) {
+  const maxV = Math.max(...data.map(d=>Math.max(d.demand,d.supply)));
+  const barW = 20, gap=8, groupW=barW*2+gap, groupGap=16;
+  const totalW = data.length*(groupW+groupGap);
+  const scaleH = h => (h/maxV)*(height-30);
+  let bars='', labels='';
+  data.forEach((d,i)=>{
+    const x=i*(groupW+groupGap);
+    const h1=scaleH(d.demand), h2=scaleH(d.supply);
+    bars+=`<rect x="${x}" y="${height-30-h1}" width="${barW}" height="${h1}" rx="3" fill="#6366f1" opacity="0.85"/>`;
+    bars+=`<rect x="${x+barW+gap}" y="${height-30-h2}" width="${barW}" height="${h2}" rx="3" fill="#22c55e" opacity="0.85"/>`;
+    const label=d.skill.length>8?d.skill.slice(0,8)+'…':d.skill;
+    labels+=`<text x="${x+groupW/2}" y="${height-8}" text-anchor="middle" fill="#94a3b8" font-size="10">${label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${totalW+40} ${height}" class="w-full" style="max-height:${height}px">
+    <g transform="translate(20,0)">${bars}${labels}</g>
+  </svg>
+  <div class="flex gap-4 mt-2">
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><span class="w-3 h-3 rounded-sm bg-indigo-500 inline-block"></span>Forecasted Demand</div>
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>Current Supply</div>
+  </div>`;
+}
+
+function svgLine(data) {
+  const W=340,H=130,pad=30;
+  const maxV=Math.max(...data.map(d=>Math.max(d.bench,d.placed)));
+  const px=(i)=>pad+i*(W-pad*2)/(data.length-1);
+  const py=(v)=>H-pad-(v/maxV)*(H-pad*2);
+  const benchPath=data.map((d,i)=>`${i===0?'M':'L'}${px(i)},${py(d.bench)}`).join(' ');
+  const placedPath=data.map((d,i)=>`${i===0?'M':'L'}${px(i)},${py(d.placed)}`).join(' ');
+  const dots1=data.map((d,i)=>`<circle cx="${px(i)}" cy="${py(d.bench)}" r="3.5" fill="#ef4444"/>`).join('');
+  const dots2=data.map((d,i)=>`<circle cx="${px(i)}" cy="${py(d.placed)}" r="3.5" fill="#22c55e"/>`).join('');
+  const xlabels=data.map((d,i)=>`<text x="${px(i)}" y="${H-4}" text-anchor="middle" fill="#94a3b8" font-size="11">${d.m}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" class="w-full" style="max-height:${H}px">
+    <path d="${benchPath}" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${placedPath}" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots1}${dots2}${xlabels}
+  </svg>
+  <div class="flex gap-4 mt-1">
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><span class="w-3 h-1 rounded bg-red-400 inline-block"></span>On Bench</div>
+    <div class="flex items-center gap-1.5 text-xs text-slate-600"><span class="w-3 h-1 rounded bg-emerald-400 inline-block"></span>Placed</div>
+  </div>`;
+}
+
+function svgPie(data) {
+  const total=data.reduce((a,b)=>a+b.val,0);
+  let angle=-90, slices='', legend='';
+  data.forEach(d=>{
+    const deg=(d.val/total)*360, rad=deg*Math.PI/180;
+    const x1=50+45*Math.cos(angle*Math.PI/180), y1=50+45*Math.sin(angle*Math.PI/180);
+    angle+=deg;
+    const x2=50+45*Math.cos(angle*Math.PI/180), y2=50+45*Math.sin(angle*Math.PI/180);
+    const large=deg>180?1:0;
+    slices+=`<path d="M50,50 L${x1.toFixed(2)},${y1.toFixed(2)} A45,45 0 ${large},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${d.color}"/>`;
+    legend+=`<div class="flex items-center gap-2 text-xs"><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${d.color}"></span><span class="text-slate-600 flex-1">${d.name}</span><span class="font-semibold text-slate-800">${d.val}</span></div>`;
+  });
+  return `<div class="flex gap-4 items-start">
+    <svg viewBox="0 0 100 100" class="shrink-0" style="width:120px;height:120px">${slices}</svg>
+    <div class="space-y-1.5 flex-1 mt-2">${legend}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER — LOGIN
+// ═══════════════════════════════════════════════════════
+function renderLogin() {
+  const roles=[
+    {role:'employee',label:'Employee',sub:'I am on bench or looking for new roles',color:'indigo',btn:'bg-indigo-600 hover:bg-indigo-700',card:'hover:border-indigo-300 hover:shadow-indigo-100',icon:'💼',initials:'TS',avColor:'bg-indigo-600',persona:'Tanmay Sharma · Senior Data Engineer · L5',
+     feats:['View AI-matched project opportunities','See match score with skill gap analysis','Get personalized upskilling recommendations','Apply directly from the platform']},
+    {role:'manager',label:'Project Manager',sub:'I need to staff an open position',color:'amber',btn:'bg-amber-500 hover:bg-amber-600',card:'hover:border-amber-300 hover:shadow-amber-100',icon:'👥',initials:'RK',avColor:'bg-amber-600',persona:'Rajesh Kumar · Project Manager · Grade M3',
+     feats:['AI-ranked candidate recommendations','Explainable match reasoning','Filter by skills, availability & bench duration','Schedule interviews from the platform']},
+    {role:'leader',label:'Leadership / HR',sub:'I oversee workforce strategy and planning',color:'emerald',btn:'bg-emerald-600 hover:bg-emerald-700',card:'hover:border-emerald-300 hover:shadow-emerald-100',icon:'📊',initials:'AS',avColor:'bg-emerald-600',persona:'Ananya Sharma · VP Workforce Planning',
+     feats:['Workforce demand forecasting','Skill gap & attrition risk alerts','Bench reduction analytics','AI-driven strategic insights']},
+  ];
+  return `<div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 flex flex-col items-center justify-center p-6">
+    <div class="text-center mb-10">
+      <div class="flex items-center justify-center gap-3 mb-4">
+        <div class="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-xl">
+          <span class="text-2xl">✦</span>
+        </div>
+        <div class="text-left">
+          <h1 class="text-3xl font-bold text-white tracking-tight">TalentAI</h1>
+          <p class="text-indigo-300 text-sm font-medium">Internal Talent Marketplace</p>
+        </div>
+      </div>
+      <p class="text-slate-400 text-base max-w-lg mx-auto leading-relaxed">AI-powered talent matching that connects bench employees with open positions — intelligently, instantly.</p>
+      <div class="flex items-center justify-center gap-6 mt-4 text-sm text-slate-500">
+        <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-emerald-400 rounded-full inline-block"></span>AI Match Scoring</span>
+        <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-indigo-400 rounded-full inline-block"></span>Skill Gap Analysis</span>
+        <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 bg-amber-400 rounded-full inline-block"></span>Demand Forecasting</span>
+      </div>
+    </div>
+    <p class="text-center text-xs font-medium text-slate-500 mb-4 uppercase tracking-widest">Sign in as</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl">
+      ${roles.map(r=>`
+      <div class="bg-white rounded-2xl border-2 border-slate-100 ${r.card} p-6 cursor-pointer transition-all duration-200 hover:shadow-xl" onclick="login('${r.role}')">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="w-12 h-12 rounded-xl bg-${r.color}-100 flex items-center justify-center text-2xl shrink-0">${r.icon}</div>
+          <div>
+            <h3 class="text-base font-semibold text-slate-900">${r.label}</h3>
+            <p class="text-sm text-slate-500 mt-0.5 leading-snug">${r.sub}</p>
+          </div>
+        </div>
+        <ul class="space-y-2 mb-5">
+          ${r.feats.map(f=>`<li class="flex items-start gap-2 text-sm text-slate-600"><span class="text-${r.color}-500 mt-0.5">✓</span>${f}</li>`).join('')}
+        </ul>
+        <div class="flex items-center gap-2.5 bg-slate-50 rounded-xl px-3 py-2 mb-4">
+          <div class="w-7 h-7 ${r.avColor} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">${r.initials}</div>
+          <p class="text-xs text-slate-600 font-medium">${r.persona}</p>
+        </div>
+        <button class="w-full py-2.5 rounded-xl text-white text-sm font-semibold ${r.btn} transition-colors" onclick="login('${r.role}')">
+          Enter as ${r.label}
+        </button>
+      </div>`).join('')}
+    </div>
+    <p class="mt-6 text-xs text-slate-600">Prototype · All data is simulated for demonstration</p>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER — LAYOUT
+// ═══════════════════════════════════════════════════════
+function renderLayout(content) {
+  const navItems = state.role==='employee'
+    ? [{page:'employee',label:'My Opportunities',icon:'💼'},{page:'analytics',label:'Workforce Analytics',icon:'📊'}]
+    : state.role==='manager'
+    ? [{page:'manager',label:'Talent Search',icon:'👥'},{page:'analytics',label:'Workforce Analytics',icon:'📊'}]
+    : [{page:'analytics',label:'Workforce Analytics',icon:'📊'}];
+
+  const userMap = {
+    employee:{name:'Tanmay Sharma',title:'Senior Data Engineer',init:'TS',col:'bg-indigo-600'},
+    manager:{name:'Rajesh Kumar',title:'Project Manager',init:'RK',col:'bg-amber-600'},
+    leader:{name:'Ananya Sharma',title:'VP Workforce Planning',init:'AS',col:'bg-emerald-600'},
+  };
+  const u=userMap[state.role];
+  const pageTitle={employee:'My Matched Opportunities',manager:'Talent Search & Candidate Ranking',analytics:'Workforce Intelligence Dashboard'}[state.page];
+  const pageSub={employee:'AI-powered matches based on your skills, certifications, and project history',manager:'Find and rank the best-fit candidates for your open positions',analytics:'Strategic workforce insights, demand forecasting, and risk signals'}[state.page];
+
+  return `<div class="flex h-screen overflow-hidden">
+    <aside class="w-64 bg-slate-900 flex flex-col shrink-0">
+      <div class="px-5 py-5 border-b border-slate-700">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center"><span class="text-white text-base">✦</span></div>
+          <div><div class="text-white font-bold text-sm tracking-wide">TalentAI</div><div class="text-slate-400 text-xs">Internal Marketplace</div></div>
+        </div>
+      </div>
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Navigation</p>
+        ${navItems.map(n=>`<button onclick="navigate('${n.page}')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${state.page===n.page?'bg-indigo-600 text-white shadow-lg':'text-slate-400 hover:bg-slate-800 hover:text-white'}">
+          <span>${n.icon}</span><span>${n.label}</span>${state.page===n.page?'<span class="ml-auto">›</span>':''}
+        </button>`).join('')}
+      </nav>
+      <div class="mx-3 mb-3 p-3 bg-indigo-950 rounded-lg border border-indigo-800">
+        <div class="flex items-center gap-2 mb-1">
+          <div class="w-2 h-2 bg-emerald-400 rounded-full pulse-dot"></div>
+          <span class="text-xs text-indigo-300 font-medium">AI Engine Active</span>
+        </div>
+        <p class="text-xs text-slate-500">Last synced 2 min ago</p>
+      </div>
+      <div class="p-3 border-t border-slate-700">
+        <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 transition-colors">
+          <div class="w-8 h-8 ${u.col} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">${u.init}</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-white font-medium truncate">${u.name}</p>
+            <p class="text-xs text-slate-400 truncate">${u.title}</p>
+          </div>
+          <button onclick="logout()" class="text-slate-500 hover:text-slate-300 transition-colors text-xs">✕</button>
+        </div>
+      </div>
+    </aside>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+        <div>
+          <h1 class="text-base font-semibold text-slate-900">${pageTitle}</h1>
+          <p class="text-xs text-slate-500 mt-0.5">${pageSub}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="relative">
+            <button class="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors text-lg">🔔</button>
+            <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full block"></span>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 bg-slate-50 rounded-lg">
+            <div class="w-6 h-6 ${u.col} rounded-full flex items-center justify-center text-white text-xs font-bold">${u.init}</div>
+            <span class="font-medium">${u.name}</span>
+          </div>
+        </div>
+      </header>
+      <main class="flex-1 overflow-y-auto">${content}</main>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER — EMPLOYEE DASHBOARD
+// ═══════════════════════════════════════════════════════
+function renderEmployee() {
+  const emp=DATA.employee;
+  let opps=[...DATA.opportunities];
+  if(state.sortBy==='match') opps.sort((a,b)=>b.score-a.score);
+  else if(state.sortBy==='prob') opps.sort((a,b)=>b.selProb-a.selProb);
+  else opps.sort((a,b)=>{const o={critical:4,high:3,medium:2,low:1};return o[b.urgency]-o[a.urgency];});
+
+  const oppCards=opps.map(opp=>{
+    const isOpen=state.expandedOpp===opp.id;
+    const applied=state.appliedJobs.has(opp.id);
+    return `<div class="bg-white rounded-xl border-2 transition-all duration-200 card-hover ${isOpen?'border-indigo-300 shadow-md':'border-slate-200'}">
+      <div class="p-5 flex gap-4 cursor-pointer" onclick="toggleOpp('${opp.id}')">
+        <div class="shrink-0">${scoreRing(opp.score)}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 class="font-semibold text-slate-900">${opp.title}</h3>
+              <span class="text-xs px-2 py-0.5 rounded-full border font-medium ${urgCls[opp.urgency]}">${urgLabel[opp.urgency]}</span>
+              ${applied?'<span class="text-xs px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 font-medium">Applied</span>':''}
+            </div>
+            <div class="shrink-0 text-right">
+              <div class="text-sm font-semibold text-indigo-600">${opp.selProb}%</div>
+              <div class="text-xs text-slate-400">selection odds</div>
+            </div>
+          </div>
+          <p class="text-sm text-slate-600">${opp.project} · <strong class="text-slate-700">${opp.client}</strong> <span class="text-slate-400 mx-1">·</span> <span class="text-slate-500">${opp.industry}</span></p>
+          <div class="flex flex-wrap gap-1.5 mt-2.5">
+            ${opp.matched.map(s=>skillChip(s,true)).join('')}
+            ${opp.missing.map(s=>skillChip(s,false)).join('')}
+          </div>
+          <div class="flex items-center gap-4 mt-2.5 text-xs text-slate-500">
+            <span>📅 ${opp.start}</span>
+            <span>⏱ ${opp.duration}</span>
+            <span>📍 ${opp.location}</span>
+            <span>🏢 ${opp.mode}</span>
+          </div>
+        </div>
+        <div class="shrink-0 self-start mt-2 text-slate-400">${isOpen?'▲':'▼'}</div>
+      </div>
+      ${isOpen?`<div class="border-t border-slate-100 px-5 pb-5 pt-4 space-y-4 slide-in">
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-indigo-500">✦</span>
+            <span class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">AI Insight</span>
+          </div>
+          <p class="text-sm text-indigo-800 leading-relaxed">${opp.insight}</p>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Skills Matched</h4>
+            ${opp.matched.map(s=>`<div class="flex items-center gap-2 text-sm text-emerald-700 mb-1.5">✓ ${s}</div>`).join('')}
+            ${opp.certs.map(c=>`<div class="flex items-center gap-2 text-sm text-emerald-700 mb-1.5">★ ${c} <span class="text-slate-400 text-xs">(cert)</span></div>`).join('')}
+          </div>
+          <div>
+            <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Skills Missing</h4>
+            ${opp.missing.length===0?'<p class="text-sm text-emerald-600 font-medium">All required skills matched! 🎉</p>':opp.missing.map(s=>`<div class="flex items-center gap-2 text-sm text-rose-600 mb-1.5">✕ ${s}</div>`).join('')}
+            ${opp.missingCerts.map(c=>`<div class="flex items-center gap-2 text-sm text-amber-600 mb-1.5">✕ ${c} <span class="text-slate-400 text-xs">(cert)</span></div>`).join('')}
+          </div>
+        </div>
+        ${opp.upskill.length?`<div>
+          <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2.5">Upskilling Recommendations</h4>
+          <div class="space-y-2">
+            ${opp.upskill.map(u=>`<div class="flex items-center gap-3 p-3 rounded-lg border text-sm ${u.priority==='high'?'bg-amber-50 border-amber-200':'bg-slate-50 border-slate-200'}">
+              <span class="${u.priority==='high'?'text-amber-500':'text-slate-400'}">📚</span>
+              <div class="flex-1 min-w-0"><span class="font-semibold text-slate-800">${u.skill}</span> · ${u.course} on ${u.platform}</div>
+              <div class="shrink-0 text-right"><div class="text-xs font-semibold text-emerald-600">${u.impact}</div><div class="text-xs text-slate-400">${u.time}</div></div>
+            </div>`).join('')}
+          </div>
+        </div>`:''}
+        <div class="flex items-center gap-3 pt-1">
+          ${applied
+            ?'<button class="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-emerald-100 text-emerald-700 cursor-default">✓ Application Sent</button>'
+            :`<button onclick="applyJob('${opp.id}')" class="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">→ Apply Now</button>`}
+          <button class="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors">Save for Later</button>
+          <span class="ml-auto text-xs text-slate-400">Posted by ${opp.postedBy} · ${opp.headcount} opening${opp.headcount>1?'s':''}</span>
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  const profW={Expert:'100%','Advanced':'75%','Intermediate':'50%','Beginner':'25%'};
+  const profCol={Expert:'bg-emerald-500','Advanced':'bg-blue-500','Intermediate':'bg-amber-400','Beginner':'bg-slate-400'};
+
+  const content=`<div class="p-6 space-y-6">
+    <!-- Profile Banner -->
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <div class="flex items-start gap-5">
+        <div class="w-14 h-14 ${emp.color} rounded-xl flex items-center justify-center text-white text-lg font-bold shrink-0">${emp.initials}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-semibold text-slate-900">${emp.name}</h2>
+              <p class="text-sm text-slate-600">${emp.designation} · ${emp.grade} · ${emp.department}</p>
+              <p class="text-sm text-slate-500 mt-0.5">${emp.location} · ${emp.yearsOfExp} years experience</p>
+            </div>
+            <div class="flex gap-3 text-center shrink-0">
+              <div class="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5"><div class="text-2xl font-bold text-rose-600">${emp.benchDuration}</div><div class="text-xs text-rose-500 font-medium">Days on Bench</div></div>
+              <div class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5"><div class="text-2xl font-bold text-emerald-600">${DATA.opportunities.length}</div><div class="text-xs text-emerald-500 font-medium">Matched Roles</div></div>
+              <div class="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5"><div class="text-2xl font-bold text-indigo-600">${Math.max(...DATA.opportunities.map(o=>o.score))}%</div><div class="text-xs text-indigo-500 font-medium">Top Match</div></div>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            ${emp.skills.slice(0,5).map(s=>`<span class="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-medium">${s.name} <span class="text-slate-400">· ${s.prof}</span></span>`).join('')}
+            <span class="text-xs px-2.5 py-1 rounded-full bg-slate-50 text-slate-400 border border-dashed border-slate-300">${emp.certs.join(', ')}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- Opportunities -->
+      <div class="xl:col-span-2 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-slate-900 flex items-center gap-2">⚡ Matched Opportunities <span class="text-sm text-slate-500 font-normal">(${opps.length} roles)</span></h2>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500">Sort:</span>
+            <button onclick="setSort('match')" class="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${state.sortBy==='match'?'bg-indigo-600 text-white':'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">Match</button>
+            <button onclick="setSort('prob')" class="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${state.sortBy==='prob'?'bg-indigo-600 text-white':'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">Odds</button>
+            <button onclick="setSort('urg')" class="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${state.sortBy==='urg'?'bg-indigo-600 text-white':'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">Urgency</button>
+          </div>
+        </div>
+        ${oppCards}
+      </div>
+
+      <!-- Sidebar -->
+      <div class="space-y-5">
+        <!-- Skills -->
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 class="font-semibold text-slate-900 mb-4">📈 My Skill Profile</h3>
+          ${emp.skills.map(s=>`<div class="mb-3">
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium text-slate-700">${s.name}</span>
+              <span class="text-slate-500">${s.prof} · ${s.yoe}y</span>
+            </div>
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="${profCol[s.prof] || 'bg-slate-400'} h-full rounded-full" style="width:${s.pct}%"></div>
+            </div>
+          </div>`).join('')}
+          <div class="mt-4 pt-4 border-t border-slate-100">
+            <p class="text-xs text-slate-500 mb-2 font-medium">Certifications</p>
+            <div class="flex gap-2 flex-wrap">
+              ${emp.certs.map(c=>`<span class="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-medium">${c}</span>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- Upskill Summary -->
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 class="font-semibold text-slate-900 mb-2">📚 Recommended Upskilling</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">Add these skills to unlock <span class="font-semibold text-slate-700">3 more high-match roles</span></p>
+          ${[{skill:'Databricks',impact:'+8%',time:'2 weeks'},{skill:'Snowflake',impact:'+22%',time:'4 weeks'},{skill:'PySpark',impact:'+5%',time:'3 weeks'}].map(r=>`
+          <div class="flex items-center justify-between gap-3 p-3 bg-slate-50 rounded-lg mb-2">
+            <div><p class="text-sm font-semibold text-slate-800">${r.skill}</p><p class="text-xs text-slate-500">${r.time} to learn</p></div>
+            <div class="text-right"><span class="text-sm font-bold text-emerald-600">${r.impact}</span><p class="text-xs text-slate-400">score boost</p></div>
+            <span class="text-slate-400">→</span>
+          </div>`).join('')}
+        </div>
+
+        <!-- Projects -->
+        <div class="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 class="font-semibold text-slate-900 mb-4">Project History</h3>
+          ${emp.projects.map(p=>`<div class="p-3 bg-slate-50 rounded-lg mb-2">
+            <p class="text-sm font-semibold text-slate-800">${p.name}</p>
+            <p class="text-xs text-slate-500">${p.client} · ${p.role}</p>
+            <div class="flex flex-wrap gap-1 mt-1.5">${p.tech.map(t=>`<span class="text-xs px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">${t}</span>`).join('')}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+  return renderLayout(content);
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER — MANAGER DASHBOARD
+// ═══════════════════════════════════════════════════════
+function renderManager() {
+  const reqs=DATA.requisitions;
+  const candidates=state.filterAvail==='all'?DATA.candidates:DATA.candidates.filter(c=>c.avail.toLowerCase().includes(state.filterAvail));
+
+  const reqList=reqs.map(r=>`<div onclick="selectReq('${r.id}')" class="p-3 rounded-xl cursor-pointer transition-all border ${state.selectedReq===r.id?'bg-indigo-50 border-indigo-200':'bg-slate-50 border-transparent hover:border-slate-200'} mb-2">
+    <div class="flex items-start justify-between gap-2 mb-1">
+      <h3 class="text-sm font-semibold leading-tight ${state.selectedReq===r.id?'text-indigo-900':'text-slate-800'}">${r.title}</h3>
+      <span class="text-xs px-1.5 py-0.5 rounded border ${urgCls[r.urgency]} shrink-0">${urgLabel[r.urgency]}</span>
+    </div>
+    <p class="text-xs text-slate-500 mb-1.5">${r.client}</p>
+    <div class="flex items-center justify-between text-xs text-slate-400">
+      <span>👥 ${r.candidates} matches</span><span>Starts ${r.start}</span>
+    </div>
+  </div>`).join('');
+
+  const selReq=reqs.find(r=>r.id===state.selectedReq);
+
+  const rankBg=[,'bg-amber-400','bg-slate-400','bg-slate-200'];
+  const rankTc=[,'text-white','text-white','text-slate-600'];
+
+  const candCards=candidates.map((c,i)=>{
+    const open=state.expandedCandidate===c.id;
+    return `<div class="bg-white rounded-xl border-2 transition-all ${open?'border-indigo-300 shadow-md':'border-slate-200'} card-hover">
+      <div class="p-5 flex gap-4 cursor-pointer" onclick="toggleCand('${c.id}')">
+        <div class="shrink-0 flex flex-col items-center gap-1">
+          <div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${rankBg[i+1]||'bg-slate-200'} ${rankTc[i+1]||'text-slate-600'}">#${i+1}</div>
+        </div>
+        <div class="w-11 h-11 ${c.color} rounded-xl flex items-center justify-center text-white font-bold text-sm shrink-0">${c.initials}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-0.5">
+            <h3 class="font-semibold text-slate-900">${c.name}</h3>
+            ${c.attrRisk?'<span class="text-xs bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full font-medium">⚠ Attrition Risk</span>':''}
+          </div>
+          <p class="text-sm text-slate-600">${c.designation} · ${c.grade} · ${c.yoe}y exp</p>
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            ${c.matched.map(s=>skillChip(s,true)).join('')}${c.missing.map(s=>skillChip(s,false)).join('')}
+          </div>
+        </div>
+        <div class="shrink-0 flex flex-col items-end gap-2">
+          <div class="flex flex-col items-center px-3 py-2.5 rounded-xl border font-bold ${scoreBg(c.score)}">
+            <span class="text-xl ${scoreColor(c.score)}">${c.score}%</span>
+            <span class="text-xs opacity-70">AI match</span>
+          </div>
+          <div class="text-right">
+            <div class="text-xs font-semibold text-rose-600">⏱ ${c.bench} days bench</div>
+            <div class="text-xs text-emerald-600 font-medium mt-0.5">${c.avail}</div>
+          </div>
+        </div>
+        <div class="self-center text-slate-400 ml-1">${open?'▲':'▼'}</div>
+      </div>
+      ${open?`<div class="border-t border-slate-100 px-5 pb-5 pt-4 space-y-4 slide-in">
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2"><span class="text-indigo-500">✦</span><span class="text-xs font-semibold text-indigo-700 uppercase tracking-wide">AI Recommendation</span></div>
+            <span class="text-xs font-semibold text-indigo-600">${c.selProb}% selection probability</span>
+          </div>
+          <p class="text-sm text-indigo-800 leading-relaxed">${c.insight}</p>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2.5">Why AI Recommended This Candidate</h4>
+          ${c.reasons.map(r=>`<div class="flex items-start gap-2 text-sm text-slate-700 mb-1.5"><span class="text-emerald-500 mt-0.5 shrink-0">✓</span>${r}</div>`).join('')}
+        </div>
+        <div class="grid grid-cols-4 gap-3">
+          <div class="bg-slate-50 rounded-lg p-3 text-center"><div class="text-lg font-bold text-slate-900">${c.yoe}y</div><div class="text-xs text-slate-500">Experience</div></div>
+          <div class="bg-slate-50 rounded-lg p-3 text-center"><div class="text-lg font-bold text-slate-900">${c.projects.length}</div><div class="text-xs text-slate-500">Projects</div></div>
+          <div class="bg-slate-50 rounded-lg p-3 text-center"><div class="text-lg font-bold text-slate-900">${c.certs.length}</div><div class="text-xs text-slate-500">Certs</div></div>
+          <div class="rounded-lg p-3 text-center ${riskCls[c.benchRisk]}"><div class="text-lg font-bold capitalize">${c.benchRisk}</div><div class="text-xs opacity-70">Bench Risk</div></div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          ${c.certs.map(cert=>`<span class="text-xs px-2.5 py-1 rounded-full border font-medium flex items-center gap-1 ${c.certs.includes(cert)?'bg-emerald-50 text-emerald-700 border-emerald-200':'bg-slate-50 text-slate-600 border-slate-200'}">★ ${cert}</span>`).join('')}
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Project History</h4>
+          ${c.projects.map(p=>`<div class="flex items-center gap-3 p-3 bg-slate-50 rounded-lg text-sm mb-1.5"><span class="flex-1 font-semibold text-slate-800">${p.name}</span><span class="text-slate-500">${p.client}</span><span class="text-slate-400 text-xs">${p.duration}</span></div>`).join('')}
+        </div>
+        <div class="flex items-center gap-3 pt-1">
+          <button onclick="openModal('${c.id}')" class="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">📅 Schedule Interview</button>
+          <button class="flex items-center gap-2 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50">✓ Shortlist</button>
+          <button class="ml-auto text-sm text-rose-500 hover:text-rose-600">Not a fit</button>
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  const content=`<div class="flex h-full">
+    <div class="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0">
+      <div class="p-4 border-b border-slate-200">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-slate-900 text-sm">Active Requisitions</h2>
+          <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">${reqs.length}</span>
+        </div>
+        <button class="w-full py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors">+ Post New Requirement</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-3">${reqList}</div>
+    </div>
+    <div class="flex-1 overflow-y-auto p-6 space-y-5">
+      ${selReq?`<div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <h2 class="text-lg font-semibold text-slate-900">${selReq.title}</h2>
+              <span class="text-xs px-2 py-0.5 rounded-full border font-medium ${urgCls[selReq.urgency]}">${urgLabel[selReq.urgency]}</span>
+            </div>
+            <p class="text-sm text-slate-600">${DATA.opportunities.find(o=>o.id===selReq.id)?.project||''} · <strong>${selReq.client}</strong></p>
+            <div class="flex items-center gap-4 mt-2 text-xs text-slate-500">
+              <span>📅 Starts ${selReq.start}</span>
+              <span>👥 ${selReq.candidates} candidates</span>
+            </div>
+          </div>
+          <div class="bg-slate-50 rounded-xl px-4 py-3 text-center">
+            <div class="text-xl font-bold text-indigo-600">${candidates.length}</div>
+            <div class="text-xs text-slate-500">Matches</div>
+          </div>
+        </div>
+      </div>`:''}
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-slate-500">Filter:</span>
+        <button onclick="setFilter('all')" class="text-xs px-3 py-1.5 rounded-lg font-medium ${state.filterAvail==='all'?'bg-indigo-600 text-white':'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">All</button>
+        <button onclick="setFilter('immediate')" class="text-xs px-3 py-1.5 rounded-lg font-medium ${state.filterAvail==='immediate'?'bg-indigo-600 text-white':'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}">Immediate</button>
+        <span class="ml-auto text-xs text-slate-500">✦ Ranked by AI match score</span>
+      </div>
+      <div class="space-y-3">${candCards}</div>
+    </div>
+  </div>
+  ${state.showModal?renderModal():''}`;
+  return renderLayout(content);
+}
+
+function renderModal() {
+  const cand=DATA.candidates.find(c=>c.id===state.modalCandidate);
+  if(!cand) return '';
+  if(state.modalConfirmed) return `<div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 modal-overlay">
+    <div class="bg-white rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+      <div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📅</div>
+      <h3 class="text-xl font-bold text-slate-900 mb-2">Interview Scheduled!</h3>
+      <p class="text-slate-600 mb-1"><strong>${cand.name}</strong> has been notified.</p>
+      <p class="text-slate-500 text-sm mb-6">Video Call · July 5, 2024 at 10:00 AM</p>
+      <div class="bg-slate-50 rounded-xl p-4 text-left mb-6">
+        <p class="text-xs text-slate-500 font-medium mb-2">Calendar invites sent to:</p>
+        <p class="text-sm text-slate-800">${cand.name.toLowerCase().replace(' ','.')}@company.com</p>
+        <p class="text-sm text-slate-800">rajesh.kumar@company.com</p>
+      </div>
+      <button onclick="closeModal()" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors">Done</button>
+    </div>
+  </div>`;
+
+  return `<div class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 modal-overlay">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+      <div class="bg-indigo-600 px-6 py-5">
+        <h3 class="text-lg font-bold text-white">Schedule Interview</h3>
+        <p class="text-indigo-200 text-sm mt-0.5">with ${cand.name} · ${cand.designation}</p>
+      </div>
+      <div class="p-6 space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Date</label>
+            <input type="date" value="2024-07-05" class="w-full text-sm px-3 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-400 outline-none" /></div>
+          <div><label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Time</label>
+            <select class="w-full text-sm px-3 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-400 outline-none">
+              <option>10:00 AM</option><option>11:00 AM</option><option>02:00 PM</option><option>03:00 PM</option>
+            </select></div>
+        </div>
+        <div><label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Interview Type</label>
+          <div class="flex gap-2">
+            <button class="flex-1 py-2 text-xs font-medium rounded-lg border bg-indigo-600 text-white border-indigo-600">Video Call</button>
+            <button class="flex-1 py-2 text-xs font-medium rounded-lg border text-slate-600 border-slate-300 hover:bg-slate-50">Phone</button>
+            <button class="flex-1 py-2 text-xs font-medium rounded-lg border text-slate-600 border-slate-300 hover:bg-slate-50">In-Person</button>
+          </div></div>
+        <div><label class="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Notes</label>
+          <textarea rows="3" placeholder="Focus areas, technical assessment details..." class="w-full text-sm px-3 py-2.5 rounded-lg border border-slate-300 focus:border-indigo-400 outline-none resize-none"></textarea></div>
+        <div class="flex gap-3 pt-1">
+          <button onclick="closeModal()" class="flex-1 py-2.5 text-sm font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button onclick="confirmInterview()" class="flex-1 py-2.5 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Confirm & Notify</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER — ANALYTICS DASHBOARD
+// ═══════════════════════════════════════════════════════
+function renderAnalytics() {
+  const a=DATA.analytics;
+  const kpiColors={rose:'bg-rose-50 border-rose-200 text-rose-600',amber:'bg-amber-50 border-amber-200 text-amber-600',indigo:'bg-indigo-50 border-indigo-200 text-indigo-600',emerald:'bg-emerald-50 border-emerald-200 text-emerald-600'};
+  const urgBadge={critical:'bg-rose-100 text-rose-700',high:'bg-amber-100 text-amber-700',medium:'bg-blue-100 text-blue-700',low:'bg-slate-100 text-slate-600'};
+  const insightBg={gap:'bg-rose-50 border-rose-200',attrition:'bg-amber-50 border-amber-200',forecast:'bg-indigo-50 border-indigo-200',obsolescence:'bg-slate-50 border-slate-200'};
+  const insightIcon={gap:'⚠️',attrition:'🚨',forecast:'⚡',obsolescence:'📉'};
+
+  const content=`<div class="p-6 space-y-6">
+    <!-- KPIs -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      ${a.kpis.map(k=>`<div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-start justify-between mb-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center border text-xl ${kpiColors[k.color]}">${k.icon}</div>
+          <span class="text-xs font-semibold px-2 py-1 rounded-full ${k.good?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}">${k.change}</span>
+        </div>
+        <p class="text-3xl font-bold text-slate-900 mb-1">${k.value}</p>
+        <p class="text-sm text-slate-500">${k.label}</p>
+      </div>`).join('')}
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div><h3 class="font-semibold text-slate-900">Bench Reduction Trend</h3><p class="text-xs text-slate-500 mt-0.5">Monthly bench count vs placements</p></div>
+          <span class="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full font-medium border border-emerald-200">22% improvement YTD</span>
+        </div>
+        ${svgLine(a.benchTrend)}
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div><h3 class="font-semibold text-slate-900">Critical Skill Gap (6-Month Forecast)</h3><p class="text-xs text-slate-500 mt-0.5">Forecasted demand vs current supply</p></div>
+          <span class="text-xs bg-rose-50 text-rose-700 px-2.5 py-1 rounded-full font-medium border border-rose-200">⚠ Action Needed</span>
+        </div>
+        ${svgBar(a.skillGap)}
+      </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div class="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 class="font-semibold text-slate-900 mb-1">Bench by Skill Domain</h3>
+        <p class="text-xs text-slate-500 mb-4">Current composition (48 total)</p>
+        ${svgPie(a.domain)}
+      </div>
+      <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div><h3 class="font-semibold text-slate-900">Attrition Risk Monitor</h3><p class="text-xs text-slate-500 mt-0.5">AI-predicted risk for extended bench employees</p></div>
+          <span class="text-xs bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-1 rounded-full font-medium">5 high-risk employees</span>
+        </div>
+        <div class="space-y-4">
+          ${a.attrition.map(e=>{
+            const col=e.risk>=70?'bg-rose-500':e.risk>=50?'bg-amber-500':'bg-blue-400';
+            const tc=e.risk>=70?'text-rose-600':e.risk>=50?'text-amber-600':'text-blue-600';
+            return `<div class="flex items-center gap-4">
+              <div class="w-32 shrink-0"><p class="text-sm font-medium text-slate-800 truncate">${e.name}</p><p class="text-xs text-slate-400 truncate">${e.role}</p></div>
+              <div class="flex-1">
+                <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="${col} h-full rounded-full" style="width:${e.risk}%"></div></div>
+                <p class="text-xs text-slate-400 mt-1">${e.signals}</p>
+              </div>
+              <div class="shrink-0 text-right w-16"><span class="text-sm font-bold ${tc}">${e.risk}%</span><p class="text-xs text-slate-400">${e.bench}d bench</p></div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p class="text-xs text-amber-800"><strong>AI Alert:</strong> 2 employees (Arjun, Aisha) show LinkedIn profile activity spikes + 3+ interview declines — recommend immediate manager outreach.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Forecast Table -->
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold text-slate-900 mb-1 flex items-center gap-2">✦ 6-Month Workforce Demand Forecast</h3>
+      <p class="text-xs text-slate-500 mb-5">AI-predicted skill demand from pipeline deals vs current internal supply</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="border-b border-slate-200">
+            ${['Skill','Category','Forecasted Demand','Current Supply','Gap','Trend','Urgency','Recommended Action'].map(h=>`<th class="text-left py-3 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            ${a.forecast.map(row=>`<tr class="hover:bg-slate-50">
+              <td class="py-3 px-3 font-semibold text-slate-900">${row.skill}</td>
+              <td class="py-3 px-3 text-slate-500 text-xs">${row.cat}</td>
+              <td class="py-3 px-3 font-bold text-indigo-600">${row.demand}</td>
+              <td class="py-3 px-3 text-slate-700">${row.supply}</td>
+              <td class="py-3 px-3 font-bold ${row.gap>0?'text-rose-600':'text-emerald-600'}">${row.gap>0?`−${row.gap}`:`+${Math.abs(row.gap)}`}</td>
+              <td class="py-3 px-3 text-xs ${row.trend==='growing'?'text-rose-600':'text-slate-500'} capitalize">${row.trend==='growing'?'↑':'↓'} ${row.trend}</td>
+              <td class="py-3 px-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium capitalize ${urgBadge[row.urgency]}">${row.urgency}</span></td>
+              <td class="py-3 px-3 text-xs ${row.gap>50?'text-rose-700':row.gap>0?'text-amber-700':'text-emerald-700'} font-medium">${row.gap>50?'Launch reskilling bootcamp':row.gap>0?'Targeted upskilling':'Surplus — consider rotation'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- AI Insights -->
+    <div class="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 class="font-semibold text-slate-900 mb-1 flex items-center gap-2">✦ AI Strategic Recommendations</h3>
+      <p class="text-xs text-slate-500 mb-5">Auto-generated from pipeline data, attrition signals, and skill demand forecasts</p>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        ${a.insights.map(ins=>`<div class="rounded-xl border p-4 ${insightBg[ins.type]}">
+          <div class="flex items-start gap-3 mb-3">
+            <span class="text-lg shrink-0 mt-0.5">${insightIcon[ins.type]}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-start justify-between gap-2">
+                <h4 class="text-sm font-semibold text-slate-900 leading-snug">${ins.title}</h4>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium capitalize shrink-0 ${urgBadge[ins.urgency]}">${ins.urgency}</span>
+              </div>
+              <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">${ins.desc}</p>
+            </div>
+          </div>
+          <button class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors">${ins.action} →</button>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  return renderLayout(content);
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER ROUTER
+// ═══════════════════════════════════════════════════════
+function render() {
+  const root=document.getElementById('root');
+  if(!state.role){root.innerHTML=renderLogin();return;}
+  if(state.page==='employee'){root.innerHTML=renderEmployee();}
+  else if(state.page==='manager'){root.innerHTML=renderManager();}
+  else if(state.page==='analytics'){root.innerHTML=renderAnalytics();}
+}
+
+// ═══════════════════════════════════════════════════════
+// EVENT HANDLERS (global, called from onclick)
+// ═══════════════════════════════════════════════════════
+function login(role){
+  state.role=role;
+  state.page=role==='employee'?'employee':role==='manager'?'manager':'analytics';
+  render();
+}
+function logout(){state.role=null;state.page='login';render();}
+function navigate(page){state.page=page;render();}
+function toggleOpp(id){state.expandedOpp=state.expandedOpp===id?'':id;render();}
+function toggleCand(id){state.expandedCandidate=state.expandedCandidate===id?'':id;render();}
+function setSort(s){state.sortBy=s;render();}
+function setFilter(f){state.filterAvail=f;render();}
+function selectReq(id){state.selectedReq=id;render();}
+function applyJob(id){state.appliedJobs.add(id);render();}
+function openModal(id){state.showModal=true;state.modalCandidate=id;state.modalConfirmed=false;render();}
+function closeModal(){state.showModal=false;state.modalCandidate=null;state.modalConfirmed=false;render();}
+function confirmInterview(){state.modalConfirmed=true;render();}
+
+// ═══════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════
+render();
+</script>
+</body>
+</html>
